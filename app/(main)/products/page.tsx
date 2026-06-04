@@ -253,7 +253,7 @@ export default function Products() {
   // Fetch products from API
   const fetchProducts = useCallback(async () => {
     try {
-      const response = await axios.get<ApiInventoryItem[]>("http://localhost:3000/api/products");
+      const response = await axios.get<ApiInventoryItem[]>("/api/products");
       // Transform data to ensure availableStock is always defined
       const transformed = response.data.map((item) => ({
         ...item,
