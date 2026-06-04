@@ -7,7 +7,6 @@ import { CurlyBracesIcon } from "lucide-react";
 const links = [
   { label: "Products", href: "/products" },
   { label: "Warehouses", href: "/warehouses" },
-  { label: "Reservations", href: "/reservations" },
 ];
 
 export function Navbar() {

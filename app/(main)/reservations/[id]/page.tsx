@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect, useCallback, useRef } from "react";
 
 // Type definitions based on actual API response
@@ -34,13 +34,27 @@ interface ApiResponse {
   reservation: ReservationData;
 }
 
-interface ConfirmResponse {
+interface ActionResponse {
   success: boolean;
   message: string;
 }
 
+// Helper to check if reservation data has changed (status or stock)
+const hasReservationChanged = (oldData: ReservationData | null, newData: ReservationData | null): boolean => {
+  if (!oldData && !newData) return false;
+  if (!oldData || !newData) return true;
+  return (
+    oldData.status !== newData.status ||
+    oldData.quantity !== newData.quantity ||
+    oldData.expiresAt !== newData.expiresAt ||
+    oldData.inventory.totalStock !== newData.inventory.totalStock ||
+    oldData.inventory.reservedStock !== newData.inventory.reservedStock
+  );
+};
+
 export default function ReservationPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params?.id as string;
 
   const [reservation, setReservation] = useState<ReservationData | null>(null);
@@ -54,6 +68,7 @@ export default function ReservationPage() {
 
   const expiredRefreshed = useRef(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -61,7 +76,7 @@ export default function ReservationPage() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const fetchReservation = useCallback(async () => {
+  const fetchReservation = useCallback(async (isPolling = false) => {
     if (!id) return;
 
     try {
@@ -76,7 +91,15 @@ export default function ReservationPage() {
       if (!data.success || !data.reservation) {
         throw new Error("Invalid reservation data");
       }
-      setReservation(data.reservation);
+      
+      // Only update state if data has changed (to avoid unnecessary re-renders)
+      setReservation((prev) => {
+        if (hasReservationChanged(prev, data.reservation)) {
+          return data.reservation;
+        }
+        return prev;
+      });
+      
       setError(null);
 
       if (data.reservation.status !== "PENDING") {
@@ -84,15 +107,19 @@ export default function ReservationPage() {
         expiredRefreshed.current = false;
       }
 
+      // Clear countdown timer if status is no longer PENDING
       if (data.reservation.status !== "PENDING" && intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      // Only set error if not polling (to avoid overwriting UI during background checks)
+      if (!isPolling) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      }
       console.error("Error fetching reservation:", err);
     } finally {
-      setLoading(false);
+      if (!isPolling) setLoading(false);
     }
   }, [id]);
 
@@ -116,6 +143,10 @@ export default function ReservationPage() {
     }
   }, [id]);
 
+  const redirectToProducts = () => {
+    router.push("/products");
+  };
+
   const handleConfirm = async () => {
     if (!reservation || reservation.status !== "PENDING") return;
     setConfirmLoading(true);
@@ -129,22 +160,22 @@ export default function ReservationPage() {
       });
 
       if (response.status === 410) {
-        // Reservation expired
         const data = await response.json();
         setError(data.error || "Reservation Expired");
-        await refreshReservation(); // This will update status to RELEASED
-        // Stop timer manually
+        await refreshReservation();
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
         }
         setTimeRemaining(0);
+        setTimeout(redirectToProducts, 1500);
         return;
       }
 
       if (response.status === 404) {
         setError("Reservation Not Found");
         setReservation(null);
+        setTimeout(redirectToProducts, 1500);
         return;
       }
 
@@ -152,11 +183,10 @@ export default function ReservationPage() {
         throw new Error(`Confirmation failed: ${response.status}`);
       }
 
-      const data: ConfirmResponse = await response.json();
+      const data: ActionResponse = await response.json();
       if (data.success) {
         setSuccessMessage(data.message || "Reservation confirmed successfully");
-        await refreshReservation(); // This will change status to CONFIRMED
-        // Timer will be cleared automatically because status is no longer PENDING
+        setTimeout(redirectToProducts, 1500);
       } else {
         throw new Error(data.message || "Confirmation failed");
       }
@@ -188,12 +218,14 @@ export default function ReservationPage() {
           intervalRef.current = null;
         }
         setTimeRemaining(0);
+        setTimeout(redirectToProducts, 1500);
         return;
       }
 
       if (response.status === 404) {
         setError("Reservation Not Found");
         setReservation(null);
+        setTimeout(redirectToProducts, 1500);
         return;
       }
 
@@ -201,10 +233,10 @@ export default function ReservationPage() {
         throw new Error(`Cancellation failed: ${response.status}`);
       }
 
-      const data: ConfirmResponse = await response.json();
+      const data: ActionResponse = await response.json();
       if (data.success) {
         setSuccessMessage(data.message || "Reservation released successfully");
-        await refreshReservation(); // Status becomes RELEASED
+        setTimeout(redirectToProducts, 1500);
       } else {
         throw new Error(data.message || "Cancellation failed");
       }
@@ -215,7 +247,7 @@ export default function ReservationPage() {
     }
   };
 
-  // Timer effect
+  // Countdown timer effect
   useEffect(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -255,14 +287,38 @@ export default function ReservationPage() {
     };
   }, [reservation, refreshReservation]);
 
+  // Initial fetch
   useEffect(() => {
     if (id) {
       setLoading(true);
-      fetchReservation();
+      fetchReservation(false);
     }
     expiredRefreshed.current = false;
     setIsExpired(false);
   }, [id, fetchReservation]);
+
+  // Polling effect: fetch every 2 seconds while reservation exists and is PENDING
+  useEffect(() => {
+    // Clear any existing polling interval
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+
+    // Only start polling if reservation exists and is PENDING
+    if (reservation && reservation.status === "PENDING") {
+      pollingIntervalRef.current = setInterval(() => {
+        fetchReservation(true); // true indicates polling (avoid error UI overwrite)
+      }, 2000);
+    }
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [reservation, fetchReservation]);
 
   const isButtonDisabled = () => {
     if (!reservation) return true;
@@ -285,7 +341,6 @@ export default function ReservationPage() {
   }
 
   if (error && !reservation) {
-    // Show not found or fatal error
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md text-center">
@@ -322,6 +377,7 @@ export default function ReservationPage() {
         {successMessage && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in">
             <p className="text-green-700 text-sm font-medium">{successMessage}</p>
+            <p className="text-green-600 text-xs mt-1">Redirecting to products...</p>
           </div>
         )}
 
@@ -329,6 +385,9 @@ export default function ReservationPage() {
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
             <p className="text-red-700 text-sm font-medium">{error}</p>
+            {error.includes("Expired") || error.includes("Not Found") ? (
+              <p className="text-red-600 text-xs mt-1">Redirecting to products...</p>
+            ) : null}
           </div>
         )}
 
@@ -473,7 +532,6 @@ export default function ReservationPage() {
         </div>
       </div>
 
-      {/* Tailwind animation for fade-in */}
       <style jsx>{`
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(-10px); }

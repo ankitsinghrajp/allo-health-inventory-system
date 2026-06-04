@@ -1,6 +1,15 @@
+"use client";
+
 import { ArrowRight, CheckCircle2, Clock, Zap } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export function Hero() {
+  const router = useRouter();
+
+  const handleExploreClick = () => {
+    router.push("/products");
+  };
+
   return (
     <section className="relative bg-gradient-to-b from-slate-50 via-blue-50/40 to-white pt-20 pb-10 overflow-hidden">
       {/* Subtle grid bg */}
@@ -39,12 +48,12 @@ export function Hero() {
 
         {/* CTAs */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-10">
-          <button className="flex items-center gap-2 px-7 py-3.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md shadow-blue-200/60 transition text-sm">
+          <button
+            onClick={handleExploreClick}
+            className="flex items-center gap-2 px-7 py-3.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md shadow-blue-200/60 transition text-sm"
+          >
             Explore Products
             <ArrowRight className="w-4 h-4" />
-          </button>
-          <button className="flex items-center gap-2 px-7 py-3.5 rounded-full bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-800 font-semibold text-sm transition shadow-sm">
-            View Warehouses
           </button>
         </div>
 

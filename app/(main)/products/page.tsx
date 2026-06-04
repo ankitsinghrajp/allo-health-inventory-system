@@ -1,7 +1,6 @@
 "use client";
 
-import { Navbar } from "@/components/Navbar";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 
@@ -57,6 +56,24 @@ const getStockLabel = (available: number): string => {
   return `Available: ${available}`;
 };
 
+// Deep comparison to check if inventory data has changed
+const hasInventoryChanged = (oldItems: InventoryItem[], newItems: InventoryItem[]): boolean => {
+  if (oldItems.length !== newItems.length) return true;
+  // Compare each item by key fields that affect UI
+  for (let i = 0; i < oldItems.length; i++) {
+    const oldItem = oldItems[i];
+    const newItem = newItems[i];
+    if (
+      oldItem.totalStock !== newItem.totalStock ||
+      oldItem.reservedStock !== newItem.reservedStock ||
+      oldItem.availableStock !== newItem.availableStock
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 // Modal Component
 const ReserveModal = ({
   isOpen,
@@ -84,7 +101,7 @@ const ReserveModal = ({
   useEffect(() => {
     if (isOpen) {
       setQuantity(1);
-      onClearError(); // Clear any previous error when modal opens
+      onClearError();
     }
   }, [isOpen, onClearError]);
 
@@ -227,31 +244,62 @@ export default function Products() {
   const [reserving, setReserving] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
   const router = useRouter();
+  
+  // Ref to store interval ID for polling
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Ref to store current inventory for comparison (to avoid unnecessary updates)
+  const currentInventoryRef = useRef<InventoryItem[]>([]);
 
   // Fetch products from API
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true);
-        const response = await axios.get<ApiInventoryItem[]>("http://localhost:3000/api/products");
-        // Transform data to ensure availableStock is always defined
-        const transformed = response.data.map((item) => ({
-          ...item,
-          availableStock: getAvailableStock(item),
-        }));
-        setInventory(transformed);
-        setError(null);
-      } catch (err) {
-        console.error("Error fetching inventory:", err);
-        setError("Failed to load products. Please try again later.");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProducts();
+  const fetchProducts = useCallback(async () => {
+    try {
+      const response = await axios.get<ApiInventoryItem[]>("http://localhost:3000/api/products");
+      // Transform data to ensure availableStock is always defined
+      const transformed = response.data.map((item) => ({
+        ...item,
+        availableStock: getAvailableStock(item),
+      }));
+      
+      // Compare with current inventory before updating state
+      setInventory((prevInventory) => {
+        if (hasInventoryChanged(prevInventory, transformed)) {
+          currentInventoryRef.current = transformed;
+          return transformed;
+        }
+        // No change, keep previous state to avoid re-renders
+        return prevInventory;
+      });
+      
+      setError(null);
+    } catch (err) {
+      console.error("Error fetching inventory:", err);
+      // Only set error if we haven't shown one yet (avoid overwriting during polling)
+      setError((prev) => prev || "Failed to load products. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Compute statistics
+  // Initial fetch and polling setup
+  useEffect(() => {
+    // Initial fetch
+    fetchProducts();
+    
+    // Set up polling every 2 seconds
+    pollingIntervalRef.current = setInterval(() => {
+      fetchProducts();
+    }, 2000);
+    
+    // Cleanup on unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [fetchProducts]);
+
+  // Compute statistics (re-run when inventory changes)
   const uniqueProductsCount = new Set(inventory.map((item) => item.productId)).size;
   const uniqueWarehousesCount = new Set(inventory.map((item) => item.warehouseId)).size;
   const totalStockValue = inventory.reduce((sum, item) => sum + (item.totalStock || 0), 0);
@@ -280,7 +328,7 @@ export default function Products() {
         payload
       );
       
-      // Extract reservation ID from response (supports both { id } and { reservation: { id } } formats)
+      // Extract reservation ID from response
       const reservationId = response.data.reservation?.id || response.data.id;
       
       if (!reservationId) {
@@ -292,7 +340,6 @@ export default function Products() {
     } catch (err) {
       console.error("Reservation error:", err);
       
-      // Handle specific HTTP error status codes
       if (axios.isAxiosError(err) && err.response) {
         const status = err.response.status;
         switch (status) {
@@ -312,11 +359,10 @@ export default function Products() {
         setReservationError("Network error. Please check your connection.");
       }
       
-      // Keep modal open to show error
       setReserving(false);
     } finally {
-      // Only close modal and clear selection if reservation succeeded (redirect happens)
-      // If we reach here with error, modal stays open and reserving is already set to false above
+      // Only close modal if no error and reservation succeeded (redirect happens)
+      // If we reach here with error, modal stays open
       if (!reservationError) {
         setReserving(false);
         setModalOpen(false);
@@ -340,7 +386,6 @@ export default function Products() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <Navbar />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
@@ -353,7 +398,6 @@ export default function Products() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <Navbar />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-center">
             {error}
@@ -365,7 +409,6 @@ export default function Products() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Top Stats Section */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
