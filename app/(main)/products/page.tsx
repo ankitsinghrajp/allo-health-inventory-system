@@ -324,7 +324,7 @@ export default function Products() {
       };
       
       const response = await axios.post<ReservationSuccessResponse>(
-        "http://localhost:3000/api/reservations",
+        "/api/reservations",
         payload
       );
       
