@@ -1,69 +1,54 @@
-import { Boxes, Clock, Menu, Package, Warehouse } from "lucide-react";
-import { useState } from "react";
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { CurlyBracesIcon } from "lucide-react";
+
+const links = [
+  { label: "Products", href: "/products" },
+  { label: "Warehouses", href: "/warehouses" },
+  { label: "Reservations", href: "/reservations" },
+];
 
 export function Navbar() {
-  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
 
   return (
-    <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-100">
-      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-100">
+      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
-        <a href="#" className="flex items-center gap-2.5 shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-sm">
-            <Boxes className="w-5 h-5 text-white" />
+        <Link href="/" className="flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center shadow-sm shadow-blue-200">
+            <CurlyBracesIcon className="w-4 h-4 text-white" />
           </div>
-          <span className="text-[17px] font-bold text-slate-900 tracking-tight">
-            Reservex
-          </span>
-        </a>
+          <span className="font-extrabold text-slate-900 text-lg tracking-tight">Reservex</span>
+        </Link>
 
-        {/* Desktop nav */}
-        <div className="hidden md:flex items-center gap-8">
-          {[
-            { label: "Products", icon: Package },
-            { label: "Warehouses", icon: Warehouse },
-            { label: "Reservations", icon: Clock },
-          ].map(({ label, icon: Icon }) => (
-            <a
-              key={label}
-              href="#"
-              className="flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900 transition font-medium"
-            >
-              <Icon className="w-4 h-4 text-slate-400" />
-              {label}
-            </a>
-          ))}
-        </div>
+        {/* Nav */}
+        <nav className="hidden md:flex items-center bg-slate-50 rounded-full p-1 gap-0.5 border border-slate-200">
+          {links.map(({ label, href }) => {
+            const isActive = pathname === href || (href !== "/" && pathname.startsWith(href));
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 ${
+                  isActive
+                    ? "bg-white text-blue-600 shadow-sm border border-slate-200"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
 
         {/* CTA */}
-        <div className="hidden md:block">
-          <button className="px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm shadow-blue-200 transition">
-            Get Started
-          </button>
-        </div>
-
-        {/* Mobile toggle */}
-        <button
-          className="md:hidden text-slate-600"
-          onClick={() => setOpen(!open)}
-        >
-          {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        <button className="hidden md:flex bg-blue-600 text-white text-sm font-bold px-5 py-2 rounded-full hover:bg-blue-700 transition-colors shadow-sm shadow-blue-200">
+          Get Started
         </button>
       </div>
-
-      {/* Mobile menu */}
-      {open && (
-        <div className="md:hidden bg-white border-t border-slate-100 px-6 py-4 space-y-3">
-          {["Products", "Warehouses", "Reservations"].map((l) => (
-            <a key={l} href="#" className="block text-sm text-slate-700 py-1">
-              {l}
-            </a>
-          ))}
-          <button className="w-full mt-2 px-4 py-2.5 rounded-full bg-blue-600 text-white text-sm font-semibold">
-            Get Started
-          </button>
-        </div>
-      )}
-    </nav>
+    </header>
   );
 }
