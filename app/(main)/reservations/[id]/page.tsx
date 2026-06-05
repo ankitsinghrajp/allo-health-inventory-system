@@ -91,15 +91,14 @@ export default function ReservationPage() {
       if (!data.success || !data.reservation) {
         throw new Error("Invalid reservation data");
       }
-      
-      // Only update state if data has changed (to avoid unnecessary re-renders)
+
       setReservation((prev) => {
         if (hasReservationChanged(prev, data.reservation)) {
           return data.reservation;
         }
         return prev;
       });
-      
+
       setError(null);
 
       if (data.reservation.status !== "PENDING") {
@@ -107,13 +106,11 @@ export default function ReservationPage() {
         expiredRefreshed.current = false;
       }
 
-      // Clear countdown timer if status is no longer PENDING
       if (data.reservation.status !== "PENDING" && intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
     } catch (err) {
-      // Only set error if not polling (to avoid overwriting UI during background checks)
       if (!isPolling) {
         setError(err instanceof Error ? err.message : "An error occurred");
       }
@@ -297,18 +294,16 @@ export default function ReservationPage() {
     setIsExpired(false);
   }, [id, fetchReservation]);
 
-  // Polling effect: fetch every 2 seconds while reservation exists and is PENDING
+  // Polling effect
   useEffect(() => {
-    // Clear any existing polling interval
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = null;
     }
 
-    // Only start polling if reservation exists and is PENDING
     if (reservation && reservation.status === "PENDING") {
       pollingIntervalRef.current = setInterval(() => {
-        fetchReservation(true); // true indicates polling (avoid error UI overwrite)
+        fetchReservation(true);
       }, 2000);
     }
 
@@ -329,218 +324,542 @@ export default function ReservationPage() {
     return false;
   };
 
+  // ── Loading state ──────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="mt-2 text-gray-600">Loading reservation details...</p>
+      <>
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+          @keyframes spin { to { transform: rotate(360deg); } }
+        `}</style>
+        <div style={{ minHeight: "100vh", background: "#f7f7fc", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{
+              width: 44, height: 44, border: "3px solid #e0e0ef", borderTopColor: "#6366f1",
+              borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 1rem",
+            }} />
+            <p style={{ fontFamily: "'DM Sans', sans-serif", color: "#9191a8", fontSize: "0.875rem", margin: 0 }}>
+              Loading reservation details…
+            </p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
+  // ── Error (no reservation) ─────────────────────────────────────────────────
   if (error && !reservation) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md text-center">
-          <h2 className="text-red-700 font-semibold text-lg">Error</h2>
-          <p className="text-red-600 mt-2">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition"
-          >
-            Retry
-          </button>
+      <>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@400;500&display=swap');`}</style>
+        <div style={{ minHeight: "100vh", background: "#f7f7fc", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
+          <div style={{
+            background: "#fff", borderRadius: 18, border: "1.5px solid #fecaca",
+            boxShadow: "0 4px 24px rgba(220,38,38,0.08)",
+            padding: "2rem", maxWidth: 400, width: "100%", textAlign: "center",
+            fontFamily: "'DM Sans', sans-serif",
+          }}>
+            <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>⚠️</div>
+            <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#0f0f1a", margin: "0 0 0.5rem", fontSize: "1.1rem" }}>
+              Error
+            </h2>
+            <p style={{ color: "#6b6b84", margin: "0 0 1.25rem", fontSize: "0.875rem" }}>{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                padding: "0.625rem 1.5rem", background: "#6366f1", color: "#fff",
+                border: "none", borderRadius: 10, fontFamily: "'DM Sans', sans-serif",
+                fontWeight: 600, fontSize: "0.875rem", cursor: "pointer",
+                boxShadow: "0 2px 10px rgba(99,102,241,0.3)",
+              }}
+            >
+              Retry
+            </button>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
+  // ── No reservation ─────────────────────────────────────────────────────────
   if (!reservation) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 max-w-md text-center">
-          <h2 className="text-yellow-700 font-semibold text-lg">Not Found</h2>
-          <p className="text-yellow-600 mt-2">Reservation does not exist.</p>
+      <>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@400;500&display=swap');`}</style>
+        <div style={{ minHeight: "100vh", background: "#f7f7fc", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
+          <div style={{
+            background: "#fffbeb", borderRadius: 18, border: "1.5px solid #fde68a",
+            padding: "2rem", maxWidth: 400, width: "100%", textAlign: "center",
+            fontFamily: "'DM Sans', sans-serif",
+          }}>
+            <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>🔍</div>
+            <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: "#0f0f1a", margin: "0 0 0.5rem", fontSize: "1.1rem" }}>
+              Not Found
+            </h2>
+            <p style={{ color: "#6b6b84", margin: 0, fontSize: "0.875rem" }}>Reservation does not exist.</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   const availableStock = reservation.inventory.totalStock - reservation.inventory.reservedStock;
+  const disabled = isButtonDisabled();
+
+  const statusConfig = {
+    PENDING:   { label: "Pending",   dot: "#fbbf24", bg: "#fffbeb", text: "#d97706", border: "#fde68a" },
+    CONFIRMED: { label: "Confirmed", dot: "#34d399", bg: "#f0fdf8", text: "#059669", border: "#a7f3d0" },
+    RELEASED:  { label: "Released",  dot: "#f87171", bg: "#fff5f5", text: "#dc2626", border: "#fecaca" },
+  }[reservation.status];
+
+  const timerUrgent = timeRemaining > 0 && timeRemaining <= 60;
 
   return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Success Toast */}
-        {successMessage && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in">
-            <p className="text-green-700 text-sm font-medium">{successMessage}</p>
-            <p className="text-green-600 text-xs mt-1">Redirecting to products...</p>
-          </div>
-        )}
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+        * { box-sizing: border-box; }
 
-        {/* Error Toast */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 animate-fade-in">
-            <p className="text-red-700 text-sm font-medium">{error}</p>
-            {error.includes("Expired") || error.includes("Not Found") ? (
-              <p className="text-red-600 text-xs mt-1">Redirecting to products...</p>
-            ) : null}
-          </div>
-        )}
-
-        {/* Card 1: Reservation Status */}
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
-          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800">Reservation Details</h2>
-          </div>
-          <div className="p-6 space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600 font-medium">Reservation ID</span>
-              <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
-                {reservation.id}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600 font-medium">Status</span>
-              <span
-                className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                  reservation.status === "PENDING"
-                    ? "bg-yellow-100 text-yellow-800"
-                    : reservation.status === "CONFIRMED"
-                    ? "bg-green-100 text-green-800"
-                    : "bg-red-100 text-red-800"
-                }`}
-              >
-                {reservation.status}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600 font-medium">Quantity</span>
-              <span className="text-gray-900">{reservation.quantity}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Product Details */}
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
-          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800">Product Information</h2>
-          </div>
-          <div className="p-6 space-y-2">
-            <h3 className="text-lg font-medium text-gray-900">
-              {reservation.inventory.product.name}
-            </h3>
-            <p className="text-gray-600">{reservation.inventory.product.description}</p>
-          </div>
-        </div>
-
-        {/* Card 3: Warehouse Details */}
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
-          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800">Warehouse</h2>
-          </div>
-          <div className="p-6 space-y-2">
-            <h3 className="text-lg font-medium text-gray-900">
-              {reservation.inventory.warehouse.name}
-            </h3>
-            <p className="text-gray-600">Location: {reservation.inventory.warehouse.location}</p>
-          </div>
-        </div>
-
-        {/* Card 4: Inventory Details */}
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
-          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800">Inventory</h2>
-          </div>
-          <div className="p-6 space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Total Stock</span>
-              <span className="font-medium">{reservation.inventory.totalStock}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">Reserved Stock</span>
-              <span className="font-medium">{reservation.inventory.reservedStock}</span>
-            </div>
-            <div className="flex justify-between items-center pt-2 border-t border-gray-100">
-              <span className="text-gray-800 font-semibold">Available Stock</span>
-              <span className="font-bold text-green-600">{availableStock}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 5: Countdown Timer - only show if PENDING */}
-        {reservation.status === "PENDING" && (
-          <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
-            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-800">Time Remaining</h2>
-            </div>
-            <div className="p-6 text-center">
-              {timeRemaining > 0 ? (
-                <div className="text-4xl font-mono font-bold text-blue-600 tracking-wider">
-                  {formatTime(timeRemaining)}
-                </div>
-              ) : (
-                <div className="text-red-600 font-semibold text-lg">
-                  ⏰ Reservation Expired
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-          <button
-            onClick={handleConfirm}
-            disabled={isButtonDisabled()}
-            className={`px-8 py-3 rounded-lg font-semibold text-white transition-all duration-200 ${
-              isButtonDisabled()
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-green-600 hover:bg-green-700 shadow-md hover:shadow-lg"
-            }`}
-          >
-            {confirmLoading ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                Confirming...
-              </span>
-            ) : (
-              "Confirm Purchase"
-            )}
-          </button>
-          <button
-            onClick={handleCancel}
-            disabled={isButtonDisabled()}
-            className={`px-8 py-3 rounded-lg font-semibold text-white transition-all duration-200 ${
-              isButtonDisabled()
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-red-600 hover:bg-red-700 shadow-md hover:shadow-lg"
-            }`}
-          >
-            {cancelLoading ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                Cancelling...
-              </span>
-            ) : (
-              "Cancel Reservation"
-            )}
-          </button>
-        </div>
-      </div>
-
-      <style jsx>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-10px); }
-          to { opacity: 1; transform: translateY(0); }
+        .res-page {
+          min-height: 100vh;
+          background: #f7f7fc;
+          background-image: radial-gradient(ellipse 80% 40% at 50% -10%, rgba(99,102,241,0.07) 0%, transparent 70%);
+          padding: 2.5rem 1.25rem 4rem;
+          font-family: 'DM Sans', sans-serif;
         }
-        .animate-fade-in {
-          animation: fadeIn 0.3s ease-out;
+        .res-inner {
+          max-width: 680px;
+          margin: 0 auto;
+        }
+
+        /* Header */
+        .res-header { margin-bottom: 1.75rem; }
+        .res-eyebrow {
+          font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+          letter-spacing: 0.1em; color: #6366f1; margin: 0 0 0.35rem;
+        }
+        .res-title {
+          font-family: 'Syne', sans-serif;
+          font-size: clamp(1.5rem, 3vw, 2rem);
+          font-weight: 700; color: #0f0f1a;
+          letter-spacing: -0.03em; margin: 0 0 0.375rem; line-height: 1.1;
+        }
+        .res-id-pill {
+          display: inline-flex; align-items: center; gap: 0.4rem;
+          background: #f0f0f8; border: 1px solid #e0e0ef; border-radius: 999px;
+          padding: 0.2rem 0.75rem;
+          font-size: 0.7rem; font-weight: 600; color: #6b6b84;
+          letter-spacing: 0.04em; font-family: 'DM Mono', monospace;
+        }
+
+        /* Toast */
+        .toast {
+          border-radius: 14px; padding: 1rem 1.125rem;
+          margin-bottom: 1rem;
+          animation: toastIn 0.3s cubic-bezier(0.34,1.56,0.64,1);
+          display: flex; align-items: flex-start; gap: 0.75rem;
+        }
+        @keyframes toastIn {
+          from { opacity: 0; transform: translateY(-8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .toast-success {
+          background: #f0fdf8; border: 1.5px solid #a7f3d0;
+        }
+        .toast-error {
+          background: #fff5f5; border: 1.5px solid #fecaca;
+        }
+        .toast-icon {
+          font-size: 1rem; flex-shrink: 0; margin-top: 1px;
+        }
+        .toast-title { font-size: 0.85rem; font-weight: 600; margin: 0 0 0.2rem; }
+        .toast-sub   { font-size: 0.75rem; margin: 0; }
+        .toast-success .toast-title { color: #059669; }
+        .toast-success .toast-sub   { color: #34d399; }
+        .toast-error .toast-title   { color: #dc2626; }
+        .toast-error .toast-sub     { color: #f87171; }
+
+        /* Cards */
+        .res-card {
+          background: #ffffff;
+          border: 1.5px solid #eaeaf5;
+          border-radius: 18px;
+          box-shadow: 0 1px 3px rgba(15,15,40,0.05), 0 4px 16px rgba(15,15,40,0.04);
+          overflow: hidden;
+          margin-bottom: 1rem;
+        }
+        .res-card-header {
+          padding: 1rem 1.375rem;
+          border-bottom: 1px solid #f0f0f8;
+          display: flex; align-items: center; gap: 0.625rem;
+        }
+        .res-card-icon {
+          width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+          background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+          border: 1px solid #c7d2fe;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .res-card-title {
+          font-family: 'Syne', sans-serif;
+          font-size: 0.875rem; font-weight: 700;
+          color: #0f0f1a; letter-spacing: -0.01em; margin: 0;
+        }
+        .res-card-body { padding: 1.25rem 1.375rem; }
+
+        /* Row */
+        .detail-row {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 0.625rem 0;
+          border-bottom: 1px solid #f5f5fb;
+        }
+        .detail-row:last-child { border-bottom: none; padding-bottom: 0; }
+        .detail-row:first-child { padding-top: 0; }
+        .detail-label {
+          font-size: 0.8rem; font-weight: 500; color: #9191a8;
+          text-transform: uppercase; letter-spacing: 0.06em;
+        }
+        .detail-value { font-size: 0.875rem; font-weight: 600; color: #0f0f1a; }
+        .mono-value {
+          font-family: 'DM Mono', 'Courier New', monospace;
+          font-size: 0.75rem; background: #f5f5fb; border: 1px solid #eaeaf5;
+          border-radius: 6px; padding: 0.2rem 0.5rem; color: #4b4b63;
+        }
+
+        /* Status pill */
+        .status-pill {
+          display: inline-flex; align-items: center; gap: 0.3rem;
+          border-radius: 999px; padding: 0.2rem 0.625rem;
+          font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em;
+        }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+        /* Product block */
+        .product-name {
+          font-family: 'Syne', sans-serif;
+          font-size: 1.1rem; font-weight: 700; color: #0f0f1a;
+          letter-spacing: -0.02em; margin: 0 0 0.5rem;
+        }
+        .product-desc {
+          font-size: 0.85rem; color: #6b6b84; line-height: 1.55; margin: 0;
+        }
+
+        /* Warehouse */
+        .warehouse-name {
+          font-family: 'Syne', sans-serif;
+          font-size: 1rem; font-weight: 700; color: #0f0f1a;
+          letter-spacing: -0.015em; margin: 0 0 0.375rem;
+        }
+        .warehouse-loc {
+          display: inline-flex; align-items: center; gap: 0.35rem;
+          font-size: 0.8rem; color: #9191a8; margin: 0;
+        }
+
+        /* Stock row */
+        .stock-total-row {
+          padding-top: 0.75rem;
+          margin-top: 0.25rem;
+          border-top: 1.5px solid #eaeaf5;
+        }
+        .stock-available {
+          font-size: 1rem; font-weight: 700; color: #059669;
+        }
+
+        /* Timer card */
+        .timer-display {
+          text-align: center; padding: 0.5rem 0 0.25rem;
+        }
+        .timer-digits {
+          font-family: 'Syne', sans-serif;
+          font-size: 3rem; font-weight: 700; letter-spacing: 0.04em;
+          line-height: 1;
+        }
+        .timer-urgent { color: #dc2626; }
+        .timer-normal { color: #6366f1; }
+        .timer-bar-wrap {
+          height: 4px; background: #f0f0f8; border-radius: 999px;
+          margin-top: 1rem; overflow: hidden;
+        }
+        .timer-expired {
+          display: inline-flex; align-items: center; gap: 0.5rem;
+          font-size: 1rem; font-weight: 600; color: #dc2626;
+          background: #fff5f5; border: 1.5px solid #fecaca;
+          border-radius: 12px; padding: 0.75rem 1.25rem;
+        }
+
+        /* Buttons */
+        .action-bar {
+          display: flex; flex-direction: column; gap: 0.75rem;
+          margin-top: 0.25rem;
+        }
+        @media (min-width: 480px) {
+          .action-bar { flex-direction: row; }
+        }
+        .btn-confirm, .btn-cancel-res {
+          flex: 1; display: flex; align-items: center; justify-content: center;
+          gap: 0.5rem; padding: 0.8rem 1.25rem; border-radius: 12px;
+          font-family: 'DM Sans', sans-serif; font-size: 0.875rem;
+          font-weight: 700; cursor: pointer; border: none;
+          transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+          letter-spacing: 0.01em;
+        }
+        .btn-confirm {
+          background: linear-gradient(135deg, #10b981, #059669);
+          color: #fff;
+          box-shadow: 0 2px 12px rgba(16,185,129,0.3);
+          border: 1.5px solid #059669;
+        }
+        .btn-confirm:hover:not(:disabled) {
+          box-shadow: 0 4px 20px rgba(16,185,129,0.4);
+          transform: translateY(-1px);
+        }
+        .btn-cancel-res {
+          background: #fff;
+          color: #dc2626;
+          border: 1.5px solid #fca5a5;
+          box-shadow: 0 1px 4px rgba(220,38,38,0.08);
+        }
+        .btn-cancel-res:hover:not(:disabled) {
+          background: #fff5f5;
+          border-color: #f87171;
+          box-shadow: 0 4px 16px rgba(220,38,38,0.12);
+          transform: translateY(-1px);
+        }
+        .btn-confirm:disabled, .btn-cancel-res:disabled {
+          opacity: 0.45; cursor: not-allowed; transform: none !important; box-shadow: none !important;
+        }
+        .btn-confirm:active:not(:disabled),
+        .btn-cancel-res:active:not(:disabled) { transform: translateY(0); }
+
+        .spin-sm {
+          width: 14px; height: 14px;
+          border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff;
+          border-radius: 50%;
+          animation: spin 0.7s linear infinite; flex-shrink: 0;
+        }
+        .spin-sm-red {
+          border-color: rgba(220,38,38,0.25); border-top-color: #dc2626;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 600px) {
+          .res-page { padding: 1.5rem 1rem 3rem; }
         }
       `}</style>
-    </div>
+
+      <div className="res-page">
+        <div className="res-inner">
+
+          {/* Page Header */}
+          <div className="res-header">
+            <p className="res-eyebrow">Inventory Management</p>
+            <h1 className="res-title">Reservation</h1>
+            <span className="res-id-pill">#{reservation.id}</span>
+          </div>
+
+          {/* Success Toast */}
+          {successMessage && (
+            <div className="toast toast-success">
+              <span className="toast-icon">✓</span>
+              <div>
+                <p className="toast-title">{successMessage}</p>
+                <p className="toast-sub">Redirecting to products…</p>
+              </div>
+            </div>
+          )}
+
+          {/* Error Toast */}
+          {error && (
+            <div className="toast toast-error">
+              <span className="toast-icon">⚠</span>
+              <div>
+                <p className="toast-title">{error}</p>
+                {(error.includes("Expired") || error.includes("Not Found")) && (
+                  <p className="toast-sub">Redirecting to products…</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Card 1: Reservation Status */}
+          <div className="res-card">
+            <div className="res-card-header">
+              <div className="res-card-icon">
+                <svg width="14" height="14" fill="none" stroke="#6366f1" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <p className="res-card-title">Reservation Details</p>
+            </div>
+            <div className="res-card-body">
+              <div className="detail-row">
+                <span className="detail-label">Reservation ID</span>
+                <span className="mono-value">{reservation.id}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Status</span>
+                <span
+                  className="status-pill"
+                  style={{ background: statusConfig.bg, border: `1px solid ${statusConfig.border}`, color: statusConfig.text }}
+                >
+                  <span className="status-dot" style={{ background: statusConfig.dot }} />
+                  {statusConfig.label}
+                </span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Quantity</span>
+                <span className="detail-value">{reservation.quantity}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Product Details */}
+          <div className="res-card">
+            <div className="res-card-header">
+              <div className="res-card-icon">
+                <svg width="14" height="14" fill="none" stroke="#6366f1" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+              </div>
+              <p className="res-card-title">Product Information</p>
+            </div>
+            <div className="res-card-body">
+              <p className="product-name">{reservation.inventory.product.name}</p>
+              <p className="product-desc">{reservation.inventory.product.description}</p>
+            </div>
+          </div>
+
+          {/* Card 3: Warehouse Details */}
+          <div className="res-card">
+            <div className="res-card-header">
+              <div className="res-card-icon">
+                <svg width="14" height="14" fill="none" stroke="#6366f1" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+              </div>
+              <p className="res-card-title">Warehouse</p>
+            </div>
+            <div className="res-card-body">
+              <p className="warehouse-name">{reservation.inventory.warehouse.name}</p>
+              <p className="warehouse-loc">
+                <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {reservation.inventory.warehouse.location}
+              </p>
+            </div>
+          </div>
+
+          {/* Card 4: Inventory Details */}
+          <div className="res-card">
+            <div className="res-card-header">
+              <div className="res-card-icon">
+                <svg width="14" height="14" fill="none" stroke="#6366f1" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <p className="res-card-title">Inventory</p>
+            </div>
+            <div className="res-card-body">
+              <div className="detail-row">
+                <span className="detail-label">Total Stock</span>
+                <span className="detail-value">{reservation.inventory.totalStock}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Reserved Stock</span>
+                <span className="detail-value">{reservation.inventory.reservedStock}</span>
+              </div>
+              <div className={`detail-row stock-total-row`}>
+                <span className="detail-label">Available Stock</span>
+                <span className="stock-available">{availableStock}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 5: Countdown Timer — only when PENDING */}
+          {reservation.status === "PENDING" && (
+            <div className="res-card">
+              <div className="res-card-header">
+                <div className="res-card-icon">
+                  <svg width="14" height="14" fill="none" stroke="#6366f1" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="res-card-title">Time Remaining</p>
+              </div>
+              <div className="res-card-body">
+                <div className="timer-display">
+                  {timeRemaining > 0 ? (
+                    <>
+                      <div className={`timer-digits ${timerUrgent ? "timer-urgent" : "timer-normal"}`}>
+                        {formatTime(timeRemaining)}
+                      </div>
+                      <div className="timer-bar-wrap">
+                        <div style={{
+                          height: "100%",
+                          borderRadius: "999px",
+                          background: timerUrgent
+                            ? "linear-gradient(90deg, #f87171, #dc2626)"
+                            : "linear-gradient(90deg, #818cf8, #6366f1)",
+                          transition: "width 1s linear",
+                        }} />
+                      </div>
+                      <p style={{ fontSize: "0.75rem", color: "#9191a8", margin: "0.75rem 0 0", fontWeight: 500 }}>
+                        {timerUrgent ? "⚡ Hurry — reservation expiring soon!" : "Complete your reservation before it expires"}
+                      </p>
+                    </>
+                  ) : (
+                    <span className="timer-expired">⏰ Reservation Expired</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="action-bar">
+            <button
+              onClick={handleConfirm}
+              disabled={disabled}
+              className="btn-confirm"
+            >
+              {confirmLoading ? (
+                <>
+                  <span className="spin-sm" />
+                  Confirming…
+                </>
+              ) : (
+                <>
+                  <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Confirm Purchase
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleCancel}
+              disabled={disabled}
+              className="btn-cancel-res"
+            >
+              {cancelLoading ? (
+                <>
+                  <span className="spin-sm spin-sm-red" />
+                  Cancelling…
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Cancel Reservation
+                </>
+              )}
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </>
   );
 }
