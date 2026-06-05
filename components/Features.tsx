@@ -25,13 +25,14 @@ const FEATURES = [
 
 export function Features() {
   return (
-    <section className="py-24 bg-white">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-14">
-          <h2 className="text-4xl font-extrabold text-slate-900 tracking-tight">
+    <section className="py-20 bg-white border-b border-gray-200">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+        <div className="text-center mb-12">
+          <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900 tracking-tight">
             Built for scale, designed for trust
           </h2>
-          <p className="text-slate-500 mt-3 text-lg max-w-xl mx-auto">
+          <p className="text-gray-500 mt-3 text-base max-w-lg mx-auto">
             Everything you need to manage reservations from cart to confirmation.
           </p>
         </div>
@@ -40,16 +41,17 @@ export function Features() {
           {FEATURES.map(({ icon: Icon, title, desc }) => (
             <div
               key={title}
-              className="group bg-white border border-slate-200 rounded-2xl p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-200"
+              className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md hover:border-gray-300 transition-all duration-150"
             >
-              <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                <Icon className="w-5 h-5 text-white" />
+              <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center mb-4">
+                <Icon className="w-4 h-4 text-indigo-600" />
               </div>
-              <h3 className="font-bold text-slate-800 text-base mb-2">{title}</h3>
-              <p className="text-sm text-slate-500 leading-relaxed">{desc}</p>
+              <h3 className="font-semibold text-gray-900 text-sm mb-1.5">{title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
             </div>
           ))}
         </div>
+
       </div>
     </section>
   );

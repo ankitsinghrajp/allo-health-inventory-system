@@ -18,9 +18,7 @@ interface InventoryItem {
   availableStock?: number;
 }
 
-interface ApiInventoryItem extends InventoryItem {
-  // Backend might send additional fields, but we use the above
-}
+interface ApiInventoryItem extends InventoryItem {}
 
 interface ReservationPayload {
   inventoryId: string;
@@ -29,50 +27,35 @@ interface ReservationPayload {
 
 interface ReservationSuccessResponse {
   success?: boolean;
-  reservation?: {
-    id: string;
-  };
+  reservation?: { id: string };
   id?: string;
 }
 
-// Helper to compute available stock safely
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
 const getAvailableStock = (item: ApiInventoryItem): number => {
   if (item.availableStock !== undefined) return item.availableStock;
-  const reserved = item.reservedStock || 0;
-  return item.totalStock - reserved;
+  return item.totalStock - (item.reservedStock || 0);
 };
 
-// Helper to get badge color based on stock level
-const getStockBadgeColor = (available: number): string => {
-  if (available > 10) return "stock-badge-green";
-  if (available >= 1 && available <= 10) return "stock-badge-yellow";
-  return "stock-badge-red";
-};
-
-// Helper to get stock label
-const getStockLabel = (available: number): string => {
-  if (available <= 0) return "Out Of Stock";
-  return `Available: ${available}`;
-};
-
-// Deep comparison to check if inventory data has changed
-const hasInventoryChanged = (oldItems: InventoryItem[], newItems: InventoryItem[]): boolean => {
+const hasInventoryChanged = (
+  oldItems: InventoryItem[],
+  newItems: InventoryItem[]
+): boolean => {
   if (oldItems.length !== newItems.length) return true;
   for (let i = 0; i < oldItems.length; i++) {
-    const oldItem = oldItems[i];
-    const newItem = newItems[i];
+    const o = oldItems[i], n = newItems[i];
     if (
-      oldItem.totalStock !== newItem.totalStock ||
-      oldItem.reservedStock !== newItem.reservedStock ||
-      oldItem.availableStock !== newItem.availableStock
-    ) {
-      return true;
-    }
+      o.totalStock !== n.totalStock ||
+      o.reservedStock !== n.reservedStock ||
+      o.availableStock !== n.availableStock
+    ) return true;
   }
   return false;
 };
 
-// Modal Component
+// ─── Modal ───────────────────────────────────────────────────────────────────
+
 const ReserveModal = ({
   isOpen,
   onClose,
@@ -97,17 +80,11 @@ const ReserveModal = ({
   const [quantity, setQuantity] = useState<number>(1);
 
   useEffect(() => {
-    if (isOpen) {
-      setQuantity(1);
-      onClearError();
-    }
+    if (isOpen) { setQuantity(1); onClearError(); }
   }, [isOpen, onClearError]);
 
-  // ✅ FIX: When stock drops to 0 after a race condition (409), clamp quantity
   useEffect(() => {
-    if (maxAvailable > 0 && quantity > maxAvailable) {
-      setQuantity(maxAvailable);
-    }
+    if (maxAvailable > 0 && quantity > maxAvailable) setQuantity(maxAvailable);
   }, [maxAvailable, quantity]);
 
   if (!isOpen) return null;
@@ -115,8 +92,8 @@ const ReserveModal = ({
   const isOutOfStock = maxAvailable <= 0;
 
   const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newQuantity = Math.min(maxAvailable, Math.max(1, parseInt(e.target.value) || 1));
-    setQuantity(newQuantity);
+    const v = Math.min(maxAvailable, Math.max(1, parseInt(e.target.value) || 1));
+    setQuantity(v);
     if (errorMessage) onClearError();
   };
 
@@ -127,207 +104,48 @@ const ReserveModal = ({
   };
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-lg w-full max-w-md">
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-900">Reserve Product</h2>
+          <p className="mt-0.5 text-sm text-gray-500">Confirm the details below to place your reservation.</p>
+        </div>
 
-        .modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(15, 15, 20, 0.55);
-          backdrop-filter: blur(6px);
-          -webkit-backdrop-filter: blur(6px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 50;
-          padding: 1rem;
-          animation: overlayIn 0.2s ease;
-        }
-        @keyframes overlayIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        .modal-card {
-          background: #ffffff;
-          border-radius: 20px;
-          border: 1px solid #e8e8ef;
-          box-shadow:
-            0 0 0 1px rgba(99,102,241,0.06),
-            0 20px 60px rgba(15,15,40,0.15),
-            0 4px 16px rgba(15,15,40,0.08);
-          max-width: 440px;
-          width: 100%;
-          padding: 2rem;
-          animation: modalIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-          font-family: 'DM Sans', sans-serif;
-        }
-        @keyframes modalIn {
-          from { opacity: 0; transform: scale(0.94) translateY(8px); }
-          to { opacity: 1; transform: scale(1) translateY(0); }
-        }
-        .modal-title {
-          font-family: 'Syne', sans-serif;
-          font-size: 1.25rem;
-          font-weight: 700;
-          color: #0f0f1a;
-          margin-bottom: 1.5rem;
-          letter-spacing: -0.02em;
-        }
-        .modal-field {
-          display: flex;
-          flex-direction: column;
-          gap: 0.25rem;
-          padding: 0.75rem 1rem;
-          background: #f8f8fc;
-          border: 1px solid #ebebf5;
-          border-radius: 12px;
-          margin-bottom: 0.625rem;
-        }
-        .modal-field-label {
-          font-size: 0.7rem;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          color: #9191a8;
-        }
-        .modal-field-value {
-          font-size: 0.9rem;
-          font-weight: 500;
-          color: #0f0f1a;
-        }
-        .modal-field-value.out-of-stock {
-          color: #dc2626;
-          font-weight: 600;
-        }
-        .modal-out-of-stock-banner {
-          background: #fff5f5;
-          border: 1px solid #fecaca;
-          border-radius: 12px;
-          padding: 0.875rem 1rem;
-          margin-top: 0.5rem;
-        }
-        .modal-out-of-stock-banner p:first-child {
-          font-size: 0.85rem;
-          font-weight: 600;
-          color: #dc2626;
-          margin: 0 0 0.25rem;
-        }
-        .modal-out-of-stock-banner p:last-child {
-          font-size: 0.75rem;
-          color: #ef4444;
-          margin: 0;
-        }
-        .modal-qty-label {
-          display: block;
-          font-size: 0.75rem;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.07em;
-          color: #6b6b84;
-          margin-bottom: 0.5rem;
-          margin-top: 0.5rem;
-        }
-        .modal-qty-input {
-          width: 100%;
-          border: 1.5px solid #e0e0ef;
-          border-radius: 10px;
-          padding: 0.625rem 0.875rem;
-          font-size: 0.9rem;
-          font-family: 'DM Sans', sans-serif;
-          color: #0f0f1a;
-          background: #fafafe;
-          outline: none;
-          transition: border-color 0.15s, box-shadow 0.15s;
-          box-sizing: border-box;
-        }
-        .modal-qty-input:focus {
-          border-color: #6366f1;
-          box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
-          background: #fff;
-        }
-        .modal-error {
-          margin-top: 0.625rem;
-          font-size: 0.8rem;
-          font-weight: 500;
-          color: #dc2626;
-          background: #fff5f5;
-          border: 1px solid #fecaca;
-          border-radius: 8px;
-          padding: 0.5rem 0.75rem;
-        }
-        .modal-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 0.75rem;
-          margin-top: 1.5rem;
-        }
-        .btn-cancel {
-          padding: 0.625rem 1.25rem;
-          background: #f3f3f8;
-          border: 1px solid #e4e4ef;
-          border-radius: 10px;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 0.875rem;
-          font-weight: 500;
-          color: #4b4b63;
-          cursor: pointer;
-          transition: background 0.15s, border-color 0.15s;
-        }
-        .btn-cancel:hover:not(:disabled) {
-          background: #eaeaf5;
-          border-color: #d4d4e8;
-        }
-        .btn-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
-        .btn-reserve {
-          padding: 0.625rem 1.5rem;
-          background: #6366f1;
-          border: 1.5px solid #6366f1;
-          border-radius: 10px;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 0.875rem;
-          font-weight: 600;
-          color: #fff;
-          cursor: pointer;
-          transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
-          box-shadow: 0 2px 8px rgba(99,102,241,0.3);
-        }
-        .btn-reserve:hover:not(:disabled) {
-          background: #4f52e8;
-          box-shadow: 0 4px 14px rgba(99,102,241,0.4);
-          transform: translateY(-1px);
-        }
-        .btn-reserve:active:not(:disabled) { transform: translateY(0); }
-        .btn-reserve:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
-      `}</style>
-      <div className="modal-overlay">
-        <div className="modal-card">
-          <h2 className="modal-title">Reserve Product</h2>
-
-          <div className="modal-field">
-            <span className="modal-field-label">Product</span>
-            <span className="modal-field-value">{productName}</span>
+        {/* Body */}
+        <div className="px-6 py-5 space-y-3">
+          {/* Product */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Product</label>
+            <p className="text-sm font-medium text-gray-900">{productName}</p>
           </div>
-          <div className="modal-field">
-            <span className="modal-field-label">Warehouse</span>
-            <span className="modal-field-value">{warehouseName}</span>
+          <div className="border-t border-gray-100" />
+          {/* Warehouse */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Warehouse</label>
+            <p className="text-sm font-medium text-gray-900">{warehouseName}</p>
           </div>
-          <div className="modal-field">
-            <span className="modal-field-label">Available Stock</span>
-            <span className={`modal-field-value${isOutOfStock ? " out-of-stock" : ""}`}>
-              {isOutOfStock ? "Out of stock" : maxAvailable}
-            </span>
+          <div className="border-t border-gray-100" />
+          {/* Stock */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Available Stock</label>
+            {isOutOfStock
+              ? <p className="text-sm font-semibold text-red-600">Out of stock</p>
+              : <p className="text-sm font-medium text-gray-900">{maxAvailable} units</p>
+            }
           </div>
 
-          {/* ✅ FIX: Show out-of-stock state inside modal instead of closing it */}
           {isOutOfStock ? (
-            <div className="modal-out-of-stock-banner">
-              <p>⚠️ No stock available</p>
-              <p>Someone just reserved the last unit. Please check back later.</p>
+            <div className="mt-1 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+              <p className="text-sm font-semibold text-red-700">⚠ No stock available</p>
+              <p className="text-xs text-red-600 mt-0.5">Someone just reserved the last unit. Please check back later.</p>
             </div>
           ) : (
-            <div>
-              <label htmlFor="quantity" className="modal-qty-label">Quantity</label>
+            <div className="pt-1">
+              <div className="border-t border-gray-100 mb-3" />
+              <label htmlFor="quantity" className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                Quantity
+              </label>
               <input
                 type="number"
                 id="quantity"
@@ -335,41 +153,68 @@ const ReserveModal = ({
                 max={maxAvailable}
                 value={quantity}
                 onChange={handleQuantityChange}
-                className="modal-qty-input"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 transition"
               />
-              {/* ✅ FIX: Error message stays visible inside modal (409 race condition) */}
               {errorMessage && (
-                <p className="modal-error">{errorMessage}</p>
+                <div className="mt-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+                  <p className="text-xs font-medium text-red-700">{errorMessage}</p>
+                </div>
               )}
             </div>
           )}
+        </div>
 
-          <div className="modal-actions">
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3">
+          <button
+            onClick={onClose}
+            disabled={isLoading}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          >
+            {isOutOfStock ? "Close" : "Cancel"}
+          </button>
+          {!isOutOfStock && (
             <button
-              onClick={onClose}
-              className="btn-cancel"
-              disabled={isLoading}
+              onClick={handleSubmit}
+              disabled={isLoading || quantity < 1 || quantity > maxAvailable}
+              className="px-5 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              {isOutOfStock ? "Close" : "Cancel"}
+              {isLoading ? "Reserving…" : "Confirm Reservation"}
             </button>
-            {/* ✅ FIX: Hide Reserve button when out of stock after race condition */}
-            {!isOutOfStock && (
-              <button
-                onClick={handleSubmit}
-                className="btn-reserve"
-                disabled={isLoading || quantity < 1 || quantity > maxAvailable}
-              >
-                {isLoading ? "Reserving…" : "Reserve"}
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
-    </>
+    </div>
   );
 };
 
-// Product Card Component
+// ─── Stock Badge ─────────────────────────────────────────────────────────────
+
+const StockBadge = ({ available }: { available: number }) => {
+  if (available <= 0)
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+        Out of Stock
+      </span>
+    );
+  if (available <= 10)
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
+        Low Stock
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+      <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+      In Stock
+    </span>
+  );
+};
+
+// ─── Product Card ─────────────────────────────────────────────────────────────
+
 const ProductCard = ({
   item,
   onReserveClick,
@@ -379,210 +224,107 @@ const ProductCard = ({
 }) => {
   const available = getAvailableStock(item);
   const isOutOfStock = available <= 0;
-  const stockLabel = getStockLabel(available);
-
-  const statusConfig = isOutOfStock
-    ? { label: "Out of Stock", dot: "#f87171", bg: "#fff5f5", text: "#dc2626", border: "#fecaca" }
-    : available > 10
-    ? { label: "In Stock", dot: "#34d399", bg: "#f0fdf8", text: "#059669", border: "#a7f3d0" }
-    : { label: "Low Stock", dot: "#fbbf24", bg: "#fffbeb", text: "#d97706", border: "#fde68a" };
 
   return (
-    <div
-      style={{
-        background: "#ffffff",
-        borderRadius: "18px",
-        border: "1.5px solid #eaeaf5",
-        boxShadow: "0 1px 3px rgba(15,15,40,0.05), 0 4px 16px rgba(15,15,40,0.04)",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        transition: "box-shadow 0.2s, transform 0.2s, border-color 0.2s",
-        fontFamily: "'DM Sans', sans-serif",
-      }}
-      onMouseEnter={(e) => {
-        const el = e.currentTarget as HTMLDivElement;
-        el.style.boxShadow = "0 4px 6px rgba(15,15,40,0.06), 0 12px 40px rgba(99,102,241,0.1)";
-        el.style.transform = "translateY(-2px)";
-        el.style.borderColor = "#d4d4f5";
-      }}
-      onMouseLeave={(e) => {
-        const el = e.currentTarget as HTMLDivElement;
-        el.style.boxShadow = "0 1px 3px rgba(15,15,40,0.05), 0 4px 16px rgba(15,15,40,0.04)";
-        el.style.transform = "translateY(0)";
-        el.style.borderColor = "#eaeaf5";
-      }}
-    >
-      {/* Card top accent strip */}
-      <div style={{
-        height: "3px",
-        background: isOutOfStock
-          ? "linear-gradient(90deg, #fca5a5, #f87171)"
-          : available > 10
-          ? "linear-gradient(90deg, #6ee7b7, #6366f1)"
-          : "linear-gradient(90deg, #fde68a, #f59e0b)",
-      }} />
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col overflow-hidden hover:shadow-md hover:border-gray-300 transition-all duration-150">
+      {/* Stock indicator strip */}
+      <div className={`h-1 w-full flex-shrink-0 ${
+        isOutOfStock ? "bg-red-400" : available <= 10 ? "bg-yellow-400" : "bg-green-500"
+      }`} />
 
-      <div style={{ padding: "1.375rem 1.375rem 0", flex: 1 }}>
-        {/* Header row */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "0.625rem", gap: "0.75rem" }}>
-          <h3 style={{
-            fontFamily: "'Syne', sans-serif",
-            fontSize: "1rem",
-            fontWeight: 700,
-            color: "#0f0f1a",
-            letterSpacing: "-0.02em",
-            lineHeight: 1.25,
-            flex: 1,
-            overflow: "hidden",
-            display: "-webkit-box",
-            WebkitLineClamp: 1,
-            WebkitBoxOrient: "vertical",
-          }}>
+      <div className="p-5 flex flex-col flex-1">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <h3 className="text-sm font-semibold text-gray-900 leading-snug line-clamp-1 flex-1">
             {item.productName}
           </h3>
-          {/* Status pill */}
-          <span style={{
-            flexShrink: 0,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.3rem",
-            background: statusConfig.bg,
-            border: `1px solid ${statusConfig.border}`,
-            borderRadius: "999px",
-            padding: "0.2rem 0.625rem",
-            fontSize: "0.7rem",
-            fontWeight: 600,
-            color: statusConfig.text,
-            letterSpacing: "0.04em",
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusConfig.dot, flexShrink: 0 }} />
-            {statusConfig.label}
-          </span>
+          <StockBadge available={available} />
         </div>
 
         {/* Description */}
-        <p style={{
-          fontSize: "0.825rem",
-          color: "#6b6b84",
-          lineHeight: 1.55,
-          marginBottom: "1.125rem",
-          overflow: "hidden",
-          display: "-webkit-box",
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical",
-        }}>
+        <p className="text-sm text-gray-500 leading-relaxed line-clamp-2 mb-4">
           {item.productDescription}
         </p>
 
         {/* Divider */}
-        <div style={{ height: "1px", background: "#f0f0f8", marginBottom: "1rem" }} />
+        <div className="border-t border-gray-100 mb-4" />
 
-        {/* Warehouse row */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: 8,
-            background: "linear-gradient(135deg, #eef2ff, #e0e7ff)",
-            border: "1px solid #c7d2fe",
-            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-          }}>
-            <svg width="13" height="13" fill="none" stroke="#6366f1" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        {/* Meta */}
+        <div className="space-y-2 mb-4">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
+            <span className="font-medium text-gray-700">{item.warehouseName}</span>
           </div>
-          <span style={{ fontSize: "0.825rem", color: "#4b4b63", fontWeight: 500 }}>{item.warehouseName}</span>
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+            <span className="text-gray-500">
+              {isOutOfStock
+                ? <span className="text-red-600 font-medium">No units available</span>
+                : <span><span className="font-semibold text-gray-900">{available}</span> of {item.totalStock} available</span>
+              }
+            </span>
+          </div>
         </div>
 
-        {/* Stock count row */}
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: isOutOfStock ? "#fff5f5" : "#f8f8fd",
-          border: `1px solid ${isOutOfStock ? "#fecaca" : "#ebebf5"}`,
-          borderRadius: "10px",
-          padding: "0.5rem 0.75rem",
-          marginBottom: "1.125rem",
-        }}>
-          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#9191a8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Stock</span>
-          <span style={{ fontSize: "0.85rem", fontWeight: 600, color: isOutOfStock ? "#dc2626" : "#0f0f1a" }}>
-            {stockLabel}
-          </span>
-        </div>
-      </div>
+        {/* Stock bar */}
+        {!isOutOfStock && item.totalStock > 0 && (
+          <div className="mb-4">
+            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${available <= 10 ? "bg-yellow-400" : "bg-green-500"}`}
+                style={{ width: `${Math.min(100, (available / item.totalStock) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
 
-      {/* CTA */}
-      <div style={{ padding: "0 1.375rem 1.375rem" }}>
-        <button
-          onClick={() => onReserveClick(item)}
-          disabled={isOutOfStock}
-          style={{
-            width: "100%",
-            padding: "0.7rem 1rem",
-            borderRadius: "11px",
-            fontFamily: "'DM Sans', sans-serif",
-            fontSize: "0.875rem",
-            fontWeight: 600,
-            cursor: isOutOfStock ? "not-allowed" : "pointer",
-            transition: "all 0.15s",
-            border: isOutOfStock ? "1.5px solid #e4e4ef" : "1.5px solid #6366f1",
-            background: isOutOfStock ? "#f5f5fb" : "linear-gradient(135deg, #6366f1, #818cf8)",
-            color: isOutOfStock ? "#b0b0c8" : "#ffffff",
-            boxShadow: isOutOfStock ? "none" : "0 2px 10px rgba(99,102,241,0.25)",
-            letterSpacing: "0.01em",
-          }}
-          onMouseEnter={(e) => {
-            if (!isOutOfStock) {
-              const el = e.currentTarget as HTMLButtonElement;
-              el.style.boxShadow = "0 4px 18px rgba(99,102,241,0.4)";
-              el.style.transform = "translateY(-1px)";
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isOutOfStock) {
-              const el = e.currentTarget as HTMLButtonElement;
-              el.style.boxShadow = "0 2px 10px rgba(99,102,241,0.25)";
-              el.style.transform = "translateY(0)";
-            }
-          }}
-        >
-          {isOutOfStock ? "Unavailable" : "Reserve Now"}
-        </button>
+        {/* CTA */}
+        <div className="mt-auto">
+          <button
+            onClick={() => onReserveClick(item)}
+            disabled={isOutOfStock}
+            className={`w-full py-2.5 px-4 rounded-lg text-sm font-semibold transition ${
+              isOutOfStock
+                ? "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+                : "bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm hover:shadow"
+            }`}
+          >
+            {isOutOfStock ? "Unavailable" : "Reserve Now"}
+          </button>
+        </div>
       </div>
     </div>
   );
 };
 
-// Stats Card Component
-const StatsCard = ({ title, value, icon }: { title: string; value: string | number; icon: React.ReactNode }) => {
-  return (
-    <div style={{
-      background: "#ffffff",
-      borderRadius: "16px",
-      border: "1.5px solid #eaeaf5",
-      boxShadow: "0 1px 3px rgba(15,15,40,0.05), 0 4px 12px rgba(15,15,40,0.04)",
-      padding: "1.375rem 1.5rem",
-      display: "flex",
-      alignItems: "center",
-      gap: "1rem",
-      fontFamily: "'DM Sans', sans-serif",
-    }}>
-      <div style={{
-        width: 44, height: 44, borderRadius: 12,
-        background: "linear-gradient(135deg, #eef2ff, #e0e7ff)",
-        border: "1.5px solid #c7d2fe",
-        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-      }}>
-        {icon}
-      </div>
-      <div>
-        <p style={{ fontSize: "0.7rem", fontWeight: 600, color: "#9191a8", textTransform: "uppercase", letterSpacing: "0.08em", margin: 0 }}>{title}</p>
-        <p style={{ fontFamily: "'Syne', sans-serif", fontSize: "1.75rem", fontWeight: 700, color: "#0f0f1a", margin: 0, lineHeight: 1.1, letterSpacing: "-0.03em" }}>{value}</p>
-      </div>
+// ─── Stats Card ───────────────────────────────────────────────────────────────
+
+const StatsCard = ({
+  title,
+  value,
+  icon,
+}: {
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
+}) => (
+  <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 flex items-center gap-4">
+    <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0">
+      {icon}
     </div>
-  );
-};
+    <div>
+      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{title}</p>
+      <p className="text-2xl font-semibold text-gray-900 leading-tight mt-0.5">{value}</p>
+    </div>
+  </div>
+);
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Products() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -593,7 +335,6 @@ export default function Products() {
   const [reserving, setReserving] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
   const router = useRouter();
-
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const currentInventoryRef = useRef<InventoryItem[]>([]);
 
@@ -605,31 +346,23 @@ export default function Products() {
         availableStock: getAvailableStock(item),
       }));
 
-      setInventory((prevInventory) => {
-        if (hasInventoryChanged(prevInventory, transformed)) {
+      setInventory((prev) => {
+        if (hasInventoryChanged(prev, transformed)) {
           currentInventoryRef.current = transformed;
           return transformed;
         }
-        return prevInventory;
+        return prev;
       });
 
-      // ✅ FIX: Keep selectedItem in sync with latest inventory so modal
-      // reflects real-time stock. When polling detects stock changed (e.g.
-      // first user booked all 8), the modal's maxAvailable updates immediately.
       setSelectedItem((prevSelected) => {
         if (!prevSelected) return prevSelected;
-        const freshItem = transformed.find(
-          (item) => item.inventoryId === prevSelected.inventoryId
-        );
-        if (!freshItem) return prevSelected;
-        // Only update if stock-related fields changed
+        const fresh = transformed.find((i) => i.inventoryId === prevSelected.inventoryId);
+        if (!fresh) return prevSelected;
         if (
-          freshItem.totalStock !== prevSelected.totalStock ||
-          freshItem.reservedStock !== prevSelected.reservedStock ||
-          freshItem.availableStock !== prevSelected.availableStock
-        ) {
-          return freshItem;
-        }
+          fresh.totalStock !== prevSelected.totalStock ||
+          fresh.reservedStock !== prevSelected.reservedStock ||
+          fresh.availableStock !== prevSelected.availableStock
+        ) return fresh;
         return prevSelected;
       });
 
@@ -644,26 +377,18 @@ export default function Products() {
 
   useEffect(() => {
     fetchProducts();
-
-    pollingIntervalRef.current = setInterval(() => {
-      fetchProducts();
-    }, 2000);
-
+    pollingIntervalRef.current = setInterval(fetchProducts, 2000);
     return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
     };
   }, [fetchProducts]);
 
-  const uniqueProductsCount = new Set(inventory.map((item) => item.productId)).size;
-  const uniqueWarehousesCount = new Set(inventory.map((item) => item.warehouseId)).size;
-  const totalStockValue = inventory.reduce((sum, item) => sum + (item.totalStock || 0), 0);
+  const uniqueProductsCount = new Set(inventory.map((i) => i.productId)).size;
+  const uniqueWarehousesCount = new Set(inventory.map((i) => i.warehouseId)).size;
+  const totalStockValue = inventory.reduce((s, i) => s + (i.totalStock || 0), 0);
 
   const handleReserveClick = (item: InventoryItem) => {
-    const available = getAvailableStock(item);
-    if (available <= 0) return;
+    if (getAvailableStock(item) <= 0) return;
     setSelectedItem(item);
     setModalOpen(true);
     setReservationError(null);
@@ -675,250 +400,123 @@ export default function Products() {
     setReservationError(null);
 
     try {
-      const payload: ReservationPayload = {
-        inventoryId: selectedItem.inventoryId,
-        quantity: quantity,
-      };
-
-      const response = await axios.post<ReservationSuccessResponse>(
-        "/api/reservations",
-        payload
-      );
-
+      const payload: ReservationPayload = { inventoryId: selectedItem.inventoryId, quantity };
+      const response = await axios.post<ReservationSuccessResponse>("/api/reservations", payload);
       const reservationId = response.data.reservation?.id || response.data.id;
-
-      if (!reservationId) {
-        throw new Error("Reservation ID not found in response");
-      }
-
-      // ✅ FIX: Only close modal on success path before redirect
+      if (!reservationId) throw new Error("Reservation ID not found in response");
       setModalOpen(false);
       setSelectedItem(null);
       router.push(`/reservations/${reservationId}`);
-
     } catch (err) {
       console.error("Reservation error:", err);
-
       if (axios.isAxiosError(err) && err.response) {
-        const status = err.response.status;
-        switch (status) {
+        switch (err.response.status) {
           case 409:
-            // ✅ FIX: Show error inside modal — do NOT close it.
             setReservationError("Not enough stock available — someone just reserved the last unit.");
             fetchProducts();
             break;
-          case 410:
-            setReservationError("Reservation expired");
-            break;
-          case 404:
-            setReservationError("Inventory item not found");
-            break;
-          default:
-            setReservationError("Failed to create reservation. Please try again.");
+          case 410: setReservationError("Reservation expired"); break;
+          case 404: setReservationError("Inventory item not found"); break;
+          default: setReservationError("Failed to create reservation. Please try again.");
         }
       } else {
         setReservationError("Network error. Please check your connection.");
       }
-
     } finally {
-      // ✅ FIX: Only reset spinner — modal stays open on error
       setReserving(false);
     }
   };
 
   const closeModal = () => {
-    if (!reserving) {
-      setModalOpen(false);
-      setSelectedItem(null);
-      setReservationError(null);
-    }
+    if (!reserving) { setModalOpen(false); setSelectedItem(null); setReservationError(null); }
   };
 
-  const clearReservationError = () => {
-    setReservationError(null);
-  };
-
+  // ── Loading ──
   if (loading) {
     return (
-      <>
-        <style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');`}</style>
-        <div style={{ minHeight: "100vh", background: "#f7f7fc", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{
-              width: 48, height: 48, border: "3px solid #e0e0ef", borderTopColor: "#6366f1",
-              borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 1rem",
-            }} />
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-            <p style={{ fontFamily: "'DM Sans', sans-serif", color: "#9191a8", fontSize: "0.875rem" }}>Loading inventory…</p>
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-gray-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-gray-500">Loading inventory…</p>
         </div>
-      </>
+      </div>
     );
   }
 
+  // ── Error ──
   if (error) {
     return (
-      <>
-        <style>{`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');`}</style>
-        <div style={{ minHeight: "100vh", background: "#f7f7fc", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
-          <div style={{
-            background: "#fff5f5", border: "1.5px solid #fecaca", borderRadius: "16px",
-            padding: "1.5rem 2rem", color: "#dc2626", textAlign: "center",
-            fontFamily: "'DM Sans', sans-serif", fontSize: "0.9rem", maxWidth: 480,
-          }}>
-            {error}
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="bg-red-50 border border-red-200 rounded-xl px-6 py-5 max-w-md text-center">
+          <p className="text-sm font-medium text-red-700">{error}</p>
         </div>
-      </>
+      </div>
     );
   }
 
+  // ── Main ──
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
-        * { box-sizing: border-box; }
-        body { margin: 0; }
-        .products-page {
-          min-height: 100vh;
-          background: #f7f7fc;
-          background-image:
-            radial-gradient(ellipse 80% 40% at 50% -10%, rgba(99,102,241,0.07) 0%, transparent 70%);
-        }
-        .products-inner {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 2.5rem 1.5rem 4rem;
-        }
-        .page-header {
-          margin-bottom: 2rem;
-        }
-        .page-eyebrow {
-          font-family: 'DM Sans', sans-serif;
-          font-size: 0.7rem;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-          color: #6366f1;
-          margin: 0 0 0.375rem;
-        }
-        .page-title {
-          font-family: 'Syne', sans-serif;
-          font-size: clamp(1.6rem, 3vw, 2.25rem);
-          font-weight: 700;
-          color: #0f0f1a;
-          letter-spacing: -0.03em;
-          margin: 0 0 0.5rem;
-          line-height: 1.1;
-        }
-        .page-subtitle {
-          font-family: 'DM Sans', sans-serif;
-          font-size: 0.875rem;
-          color: #9191a8;
-          margin: 0;
-        }
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 1rem;
-          margin-bottom: 2rem;
-        }
-        @media (max-width: 640px) {
-          .stats-grid { grid-template-columns: 1fr; }
-          .products-inner { padding: 1.5rem 1rem 3rem; }
-        }
-        .products-section-label {
-          font-family: 'DM Sans', sans-serif;
-          font-size: 0.75rem;
-          font-weight: 600;
-          color: #9191a8;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          margin-bottom: 1rem;
-        }
-        .products-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 1.25rem;
-        }
-        @media (max-width: 900px) {
-          .products-grid { grid-template-columns: repeat(2, 1fr); }
-        }
-        @media (max-width: 600px) {
-          .products-grid { grid-template-columns: 1fr; }
-        }
-        .empty-state {
-          text-align: center;
-          padding: 4rem 2rem;
-          background: #fff;
-          border-radius: 18px;
-          border: 1.5px dashed #ddddf0;
-          font-family: 'DM Sans', sans-serif;
-          color: #9191a8;
-          font-size: 0.9rem;
-        }
-      `}</style>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
-      <div className="products-page">
-        <main className="products-inner">
+        {/* Page Header */}
+        <div className="mb-8">
+          <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest mb-1">Inventory Management</p>
+          <h1 className="text-2xl font-semibold text-gray-900">Product Catalog</h1>
+          <p className="mt-1 text-sm text-gray-500">Browse and reserve products across all warehouse locations.</p>
+        </div>
 
-          {/* Page Header */}
-          <div className="page-header">
-            <p className="page-eyebrow">Inventory Management</p>
-            <h1 className="page-title">Product Catalog</h1>
-            <p className="page-subtitle">Browse and reserve products across all warehouse locations.</p>
+        {/* Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          <StatsCard
+            title="Products"
+            value={uniqueProductsCount}
+            icon={
+              <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+            }
+          />
+          <StatsCard
+            title="Warehouses"
+            value={uniqueWarehousesCount}
+            icon={
+              <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+              </svg>
+            }
+          />
+          <StatsCard
+            title="Total Stock"
+            value={totalStockValue.toLocaleString()}
+            icon={
+              <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            }
+          />
+        </div>
+
+        {/* Section label */}
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{inventory.length} items</p>
+        </div>
+
+        {/* Grid */}
+        {inventory.length === 0 ? (
+          <div className="bg-white rounded-xl border border-dashed border-gray-300 py-16 text-center">
+            <p className="text-sm text-gray-400">No products found.</p>
           </div>
-
-          {/* Stats */}
-          <div className="stats-grid">
-            <StatsCard
-              title="Products"
-              value={uniqueProductsCount}
-              icon={
-                <svg width="18" height="18" fill="none" stroke="#6366f1" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
-              }
-            />
-            <StatsCard
-              title="Warehouses"
-              value={uniqueWarehousesCount}
-              icon={
-                <svg width="18" height="18" fill="none" stroke="#6366f1" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                </svg>
-              }
-            />
-            <StatsCard
-              title="Total Stock"
-              value={totalStockValue.toLocaleString()}
-              icon={
-                <svg width="18" height="18" fill="none" stroke="#6366f1" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              }
-            />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {inventory.map((item) => (
+              <ProductCard key={item.inventoryId} item={item} onReserveClick={handleReserveClick} />
+            ))}
           </div>
-
-          {/* Section label */}
-          <p className="products-section-label">{inventory.length} items</p>
-
-          {/* Product Grid */}
-          {inventory.length === 0 ? (
-            <div className="empty-state">
-              <p>No products found.</p>
-            </div>
-          ) : (
-            <div className="products-grid">
-              {inventory.map((item) => (
-                <ProductCard key={item.inventoryId} item={item} onReserveClick={handleReserveClick} />
-              ))}
-            </div>
-          )}
-        </main>
+        )}
       </div>
 
-      {/* Reserve Modal */}
+      {/* Modal */}
       {selectedItem && (
         <ReserveModal
           isOpen={modalOpen}
@@ -929,9 +527,9 @@ export default function Products() {
           onConfirm={handleConfirmReservation}
           isLoading={reserving}
           errorMessage={reservationError}
-          onClearError={clearReservationError}
+          onClearError={() => setReservationError(null)}
         />
       )}
-    </>
+    </div>
   );
 }
