@@ -8,7 +8,7 @@ const inter = Inter({
 export const metadata = {
   title: "Inventory Reservation System",
   description:
-    "Arogya is a digital health platform that lets you consult certified doctors anytime through secure video calls with a smart freemium model.",
+    "",
 };
 
 export default function RootLayout({ children }) {
