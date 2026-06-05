@@ -1,5 +1,9 @@
 # Inventory Reservation System
 
+🔗 Live Demo: https://allo-health-inventory-system-sigma.vercel.app
+
+📦 Source Code: https://github.com/ankitsinghrajp/allo-health-inventory-system
+
 A full-stack inventory reservation system built with Next.js, Prisma, Neon PostgreSQL, and Redis.
 
 The application prevents overselling of inventory by introducing temporary reservations during checkout. Products can be reserved for a limited time, confirmed after successful payment, or released if the user cancels or the reservation expires.
