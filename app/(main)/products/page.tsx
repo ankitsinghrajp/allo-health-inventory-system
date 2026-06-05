@@ -38,7 +38,6 @@ interface ReservationSuccessResponse {
 // Helper to compute available stock safely
 const getAvailableStock = (item: ApiInventoryItem): number => {
   if (item.availableStock !== undefined) return item.availableStock;
-  // Fallback if backend sends only totalStock & reservedStock
   const reserved = item.reservedStock || 0;
   return item.totalStock - reserved;
 };
@@ -59,7 +58,6 @@ const getStockLabel = (available: number): string => {
 // Deep comparison to check if inventory data has changed
 const hasInventoryChanged = (oldItems: InventoryItem[], newItems: InventoryItem[]): boolean => {
   if (oldItems.length !== newItems.length) return true;
-  // Compare each item by key fields that affect UI
   for (let i = 0; i < oldItems.length; i++) {
     const oldItem = oldItems[i];
     const newItem = newItems[i];
@@ -105,7 +103,16 @@ const ReserveModal = ({
     }
   }, [isOpen, onClearError]);
 
+  // ✅ FIX: When stock drops to 0 after a race condition (409), clamp quantity
+  useEffect(() => {
+    if (maxAvailable > 0 && quantity > maxAvailable) {
+      setQuantity(maxAvailable);
+    }
+  }, [maxAvailable, quantity]);
+
   if (!isOpen) return null;
+
+  const isOutOfStock = maxAvailable <= 0;
 
   const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newQuantity = Math.min(maxAvailable, Math.max(1, parseInt(e.target.value) || 1));
@@ -130,42 +137,65 @@ const ReserveModal = ({
           <p className="text-gray-700">
             <span className="font-medium">Warehouse:</span> {warehouseName}
           </p>
+
+          {/* ✅ FIX: Show live stock with visual feedback when it changes */}
           <p className="text-gray-700">
-            <span className="font-medium">Available:</span> {maxAvailable}
+            <span className="font-medium">Available: </span>
+            <span className={isOutOfStock ? "text-red-600 font-semibold" : "text-gray-900"}>
+              {isOutOfStock ? "Out of stock" : maxAvailable}
+            </span>
           </p>
-          <div>
-            <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">
-              Quantity
-            </label>
-            <input
-              type="number"
-              id="quantity"
-              min={1}
-              max={maxAvailable}
-              value={quantity}
-              onChange={handleQuantityChange}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            {errorMessage && (
-              <p className="mt-2 text-sm text-red-600">{errorMessage}</p>
-            )}
-          </div>
+
+          {/* ✅ FIX: Show out-of-stock state inside modal instead of closing it */}
+          {isOutOfStock ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-2">
+              <p className="text-red-700 text-sm font-medium">
+                ⚠️ No stock available
+              </p>
+              <p className="text-red-600 text-xs mt-1">
+                Someone just reserved the last unit. Please check back later.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">
+                Quantity
+              </label>
+              <input
+                type="number"
+                id="quantity"
+                min={1}
+                max={maxAvailable}
+                value={quantity}
+                onChange={handleQuantityChange}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              {/* ✅ FIX: Error message stays visible inside modal (409 race condition) */}
+              {errorMessage && (
+                <p className="mt-2 text-sm text-red-600 font-medium">{errorMessage}</p>
+              )}
+            </div>
+          )}
         </div>
+
         <div className="flex justify-end gap-3">
           <button
             onClick={onClose}
             className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
             disabled={isLoading}
           >
-            Cancel
+            {isOutOfStock ? "Close" : "Cancel"}
           </button>
-          <button
-            onClick={handleSubmit}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
-            disabled={isLoading || quantity < 1 || quantity > maxAvailable}
-          >
-            {isLoading ? "Reserving..." : "Reserve"}
-          </button>
+          {/* ✅ FIX: Hide Reserve button when out of stock after race condition */}
+          {!isOutOfStock && (
+            <button
+              onClick={handleSubmit}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+              disabled={isLoading || quantity < 1 || quantity > maxAvailable}
+            >
+              {isLoading ? "Reserving..." : "Reserve"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -244,53 +274,62 @@ export default function Products() {
   const [reserving, setReserving] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
   const router = useRouter();
-  
-  // Ref to store interval ID for polling
+
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  // Ref to store current inventory for comparison (to avoid unnecessary updates)
   const currentInventoryRef = useRef<InventoryItem[]>([]);
 
-  // Fetch products from API
   const fetchProducts = useCallback(async () => {
     try {
       const response = await axios.get<ApiInventoryItem[]>("/api/products");
-      // Transform data to ensure availableStock is always defined
       const transformed = response.data.map((item) => ({
         ...item,
         availableStock: getAvailableStock(item),
       }));
-      
-      // Compare with current inventory before updating state
+
       setInventory((prevInventory) => {
         if (hasInventoryChanged(prevInventory, transformed)) {
           currentInventoryRef.current = transformed;
           return transformed;
         }
-        // No change, keep previous state to avoid re-renders
         return prevInventory;
       });
-      
+
+      // ✅ FIX: Keep selectedItem in sync with latest inventory so modal
+      // reflects real-time stock. When polling detects stock changed (e.g.
+      // first user booked all 8), the modal's maxAvailable updates immediately.
+      setSelectedItem((prevSelected) => {
+        if (!prevSelected) return prevSelected;
+        const freshItem = transformed.find(
+          (item) => item.inventoryId === prevSelected.inventoryId
+        );
+        if (!freshItem) return prevSelected;
+        // Only update if stock-related fields changed
+        if (
+          freshItem.totalStock !== prevSelected.totalStock ||
+          freshItem.reservedStock !== prevSelected.reservedStock ||
+          freshItem.availableStock !== prevSelected.availableStock
+        ) {
+          return freshItem;
+        }
+        return prevSelected;
+      });
+
       setError(null);
     } catch (err) {
       console.error("Error fetching inventory:", err);
-      // Only set error if we haven't shown one yet (avoid overwriting during polling)
       setError((prev) => prev || "Failed to load products. Please try again later.");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Initial fetch and polling setup
   useEffect(() => {
-    // Initial fetch
     fetchProducts();
-    
-    // Set up polling every 2 seconds
+
     pollingIntervalRef.current = setInterval(() => {
       fetchProducts();
     }, 2000);
-    
-    // Cleanup on unmount
+
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
@@ -299,7 +338,6 @@ export default function Products() {
     };
   }, [fetchProducts]);
 
-  // Compute statistics (re-run when inventory changes)
   const uniqueProductsCount = new Set(inventory.map((item) => item.productId)).size;
   const uniqueWarehousesCount = new Set(inventory.map((item) => item.warehouseId)).size;
   const totalStockValue = inventory.reduce((sum, item) => sum + (item.totalStock || 0), 0);
@@ -316,35 +354,42 @@ export default function Products() {
     if (!selectedItem) return;
     setReserving(true);
     setReservationError(null);
-    
+
     try {
       const payload: ReservationPayload = {
         inventoryId: selectedItem.inventoryId,
         quantity: quantity,
       };
-      
+
       const response = await axios.post<ReservationSuccessResponse>(
         "/api/reservations",
         payload
       );
-      
-      // Extract reservation ID from response
+
       const reservationId = response.data.reservation?.id || response.data.id;
-      
+
       if (!reservationId) {
         throw new Error("Reservation ID not found in response");
       }
-      
-      // Redirect to reservation page
+
+      // ✅ FIX: Only close modal on success path before redirect
+      setModalOpen(false);
+      setSelectedItem(null);
       router.push(`/reservations/${reservationId}`);
+
     } catch (err) {
       console.error("Reservation error:", err);
-      
+
       if (axios.isAxiosError(err) && err.response) {
         const status = err.response.status;
         switch (status) {
           case 409:
-            setReservationError("Not enough stock available");
+            // ✅ FIX: Show error inside modal — do NOT close it.
+            // The polling (every 2s) will also update maxAvailable in the modal
+            // so the user sees "Out of stock" reflected live.
+            setReservationError("Not enough stock available — someone just reserved the last unit.");
+            // Immediately force a fresh fetch so stock count updates right away
+            fetchProducts();
             break;
           case 410:
             setReservationError("Reservation expired");
@@ -358,16 +403,10 @@ export default function Products() {
       } else {
         setReservationError("Network error. Please check your connection.");
       }
-      
-      setReserving(false);
+
     } finally {
-      // Only close modal if no error and reservation succeeded (redirect happens)
-      // If we reach here with error, modal stays open
-      if (!reservationError) {
-        setReserving(false);
-        setModalOpen(false);
-        setSelectedItem(null);
-      }
+      // ✅ FIX: Only reset spinner — modal stays open on error
+      setReserving(false);
     }
   };
 
@@ -417,7 +456,7 @@ export default function Products() {
           <StatsCard title="Total Stock" value={totalStockValue} />
         </div>
 
-        {/* Product Grid - 3 columns on desktop */}
+        {/* Product Grid */}
         {inventory.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-xl shadow-sm">
             <p className="text-gray-500">No products found.</p>
