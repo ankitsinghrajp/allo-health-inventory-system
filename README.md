@@ -4,26 +4,45 @@ A full-stack inventory reservation system built with Next.js, Prisma, Neon Postg
 
 The application prevents overselling of inventory by introducing temporary reservations during checkout. Products can be reserved for a limited time, confirmed after successful payment, or released if the user cancels or the reservation expires.
 
-## Tech Stack
+---
 
-### Frontend
+# Architecture
+
+```text
+Client (Next.js UI)
+        |
+        v
+Next.js Route Handlers
+        |
+        +---- Prisma ORM ------> Neon PostgreSQL
+        |
+        +---- Redis -----------> Distributed Locks
+```
+
+The frontend communicates with Next.js API routes. Prisma handles database access, while Redis is used for distributed locking to prevent concurrent inventory modifications.
+
+---
+
+# Tech Stack
+
+## Frontend
 
 * Next.js (App Router)
 * TypeScript
 * Tailwind CSS
 
-### Backend
+## Backend
 
 * Next.js Route Handlers
 * Prisma ORM
 
-### Database
+## Database
 
 * Neon PostgreSQL
 
-### Caching / Concurrency Control
+## Caching / Concurrency Control
 
-* Redis
+* Redis (Upstash)
 
 ---
 
@@ -53,6 +72,8 @@ If stock is unavailable, the API returns:
 
 and the user sees the error on the UI.
 
+---
+
 ## Reservation Confirmation
 
 When payment succeeds:
@@ -69,6 +90,8 @@ If the reservation has expired:
 
 is returned and displayed to the user.
 
+---
+
 ## Reservation Release
 
 When payment fails or the user cancels:
@@ -76,6 +99,8 @@ When payment fails or the user cancels:
 * Reservation status becomes `RELEASED`.
 * Reserved stock is restored.
 * Inventory becomes available to other users.
+
+---
 
 ## Reservation Expiry
 
@@ -88,6 +113,16 @@ Before reservation, confirmation, or release operations:
 * Expired reservations are detected.
 * Reserved stock is restored.
 * Reservation status becomes `RELEASED`.
+
+---
+
+# Assumptions
+
+* Inventory reservations expire after 10 minutes.
+* Only `PENDING` reservations can be confirmed or released.
+* Confirmed reservations permanently reduce inventory stock.
+* Released reservations restore reserved inventory.
+* Reservation cleanup is performed lazily during reservation-related requests.
 
 ---
 
@@ -230,9 +265,8 @@ Result:
 If two users try to reserve the last unit simultaneously:
 
 * One request succeeds.
-* One request receives `409 Conflict`.
-
-Overselling is prevented.
+* One request fails.
+* Overselling is prevented.
 
 ---
 
@@ -331,55 +365,40 @@ npx prisma generate
 npx prisma db push
 ```
 
-## 6. Start the Development Server
+## 6. Start Development Server
 
 ```bash
 npm run dev
 ```
 
-The application will be available at:
+Application URL:
 
 ```text
 http://localhost:3000
-```
-
-
-## Run Prisma
-
-```bash
-npx prisma generate
-npx prisma db push
-```
-
-
-## Start Development Server
-
-```bash
-npm run dev
 ```
 
 ---
 
 # Testing Performed
 
-### Reservation Flow
+## Reservation Flow
 
 * Create reservation
 * Confirm reservation
 * Release reservation
 
-### Concurrency
+## Concurrency
 
 * Simultaneous reservation requests for the last unit
 * Verified that only one request succeeds
 
-### Expiry
+## Expiry
 
 * Reservation expiration
 * Confirm after expiration
 * Release after expiration
 
-### Real-Time Updates
+## Real-Time Updates
 
 * Inventory updates across multiple browser sessions
 * Automatic out-of-stock updates without page refresh
@@ -390,13 +409,25 @@ npm run dev
 
 For this assignment, reservation expiry is handled using lazy cleanup before reservation-related operations.
 
-In a production environment, I would move expiry handling to:
+Advantages:
+
+* Simpler implementation
+* No additional infrastructure required
+
+Production improvements:
 
 * Background workers
 * Scheduled jobs
 * Cron-based cleanup
 
-to reduce cleanup work during request processing.
+Additionally, frontend updates use polling every 2 seconds for simplicity.
+
+In production, this could be replaced with:
+
+* WebSockets
+* Server-Sent Events (SSE)
+
+to provide more efficient real-time updates.
 
 ---
 
@@ -406,4 +437,4 @@ Frontend: Vercel
 
 Database: Neon PostgreSQL
 
-Caching: Upstash Redis
+Caching / Locking: Upstash Redis
