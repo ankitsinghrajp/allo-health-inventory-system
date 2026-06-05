@@ -4,10 +4,13 @@ import { prisma } from "@/src/lib/prisma";
 import { acquireLock, releaseLock } from "@/src/lib/lock";
 import { cleanupExpiredReservations } from "@/src/lib/cleanupExpiredReservations";
 
+// Retries lock acquisition for a limited time to prevent
+// multiple users from reserving the same inventory simultaneously.
+
 async function acquireLockWithRetry(
   lockKey: string,
   maxWaitMs = 5000,
-  retryIntervalMs = 100
+  retryIntervalMs = 100,
 ) {
   const start = Date.now();
 
@@ -18,9 +21,8 @@ async function acquireLockWithRetry(
       return true;
     }
 
-    await new Promise((resolve) =>
-      setTimeout(resolve, retryIntervalMs)
-    );
+    // Wait briefly before retrying lock acquisition
+    await new Promise((resolve) => setTimeout(resolve, retryIntervalMs));
   }
 
   return false;
@@ -36,6 +38,7 @@ export async function POST(req: NextRequest) {
     inventoryId = body.inventoryId;
     const quantity = body.quantity;
 
+    // Validate incoming request payload
     if (!inventoryId || !quantity || quantity <= 0) {
       return NextResponse.json(
         {
@@ -43,11 +46,12 @@ export async function POST(req: NextRequest) {
         },
         {
           status: 400,
-        }
+        },
       );
     }
 
-    // Cleanup before acquiring lock
+    // Release any expired reservations before processing
+    // a new reservation request.
     await cleanupExpiredReservations();
 
     lockKey = `lock:inventory:${inventoryId}`;
@@ -56,79 +60,74 @@ export async function POST(req: NextRequest) {
 
     const acquired = await acquireLockWithRetry(lockKey);
 
+    // Prevent concurrent reservations if lock cannot be acquired
     if (!acquired) {
-      console.log(
-        "FAILED TO ACQUIRE LOCK:",
-        inventoryId
-      );
+      console.log("FAILED TO ACQUIRE LOCK:", inventoryId);
 
       return NextResponse.json(
         {
-          error:
-            "Could not acquire reservation lock after retries",
+          error: "Could not acquire reservation lock after retries",
         },
         {
           status: 423,
-        }
+        },
       );
     }
 
-    console.log(
-      "LOCK ACQUIRED:",
-      inventoryId
-    );
+    console.log("LOCK ACQUIRED:", inventoryId);
 
-    const reservation =
-      await prisma.$transaction(async (tx) => {
-        const inventory =
-          await tx.inventory.findUnique({
-            where: {
-              id: inventoryId,
-            },
-          });
-
-        if (!inventory) {
-          throw new Error("INVENTORY_NOT_FOUND");
-        }
-
-        const availableStock =
-          inventory.totalStock -
-          inventory.reservedStock;
-
-        console.log(
-          "AVAILABLE STOCK:",
-          availableStock
-        );
-
-        if (availableStock < quantity) {
-          throw new Error("INSUFFICIENT_STOCK");
-        }
-
-        const createdReservation =
-          await tx.reservation.create({
-            data: {
-              inventoryId,
-              quantity,
-              status: "PENDING",
-              expiresAt: new Date(
-                Date.now() + 10 * 60 * 1000
-              ),
-            },
-          });
-
-        await tx.inventory.update({
-          where: {
-            id: inventoryId,
-          },
-          data: {
-            reservedStock: {
-              increment: quantity,
-            },
-          },
-        });
-
-        return createdReservation;
+    // Execute reservation creation and stock update atomically
+    // to maintain inventory consistency.
+    const reservation = await prisma.$transaction(async (tx) => {
+      const inventory = await tx.inventory.findUnique({
+        where: {
+          id: inventoryId,
+        },
       });
+
+      if (!inventory) {
+        throw new Error("INVENTORY_NOT_FOUND");
+      }
+
+      // Calculate real-time available stock
+      const availableStock = inventory.totalStock - inventory.reservedStock;
+
+      console.log("AVAILABLE STOCK:", availableStock);
+
+      // Reject reservation if requested quantity
+      // exceeds available inventory.
+
+      if (availableStock < quantity) {
+        throw new Error("INSUFFICIENT_STOCK");
+      }
+
+      // Create a temporary reservation that expires
+      // automatically if not confirmed.
+
+      const createdReservation = await tx.reservation.create({
+        data: {
+          inventoryId,
+          quantity,
+          status: "PENDING",
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        },
+      });
+
+      // Reserve stock immediately so other users
+      // cannot overbook the same inventory.
+      await tx.inventory.update({
+        where: {
+          id: inventoryId,
+        },
+        data: {
+          reservedStock: {
+            increment: quantity,
+          },
+        },
+      });
+
+      return createdReservation;
+    });
 
     return NextResponse.json(
       {
@@ -137,34 +136,29 @@ export async function POST(req: NextRequest) {
       },
       {
         status: 201,
-      }
+      },
     );
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === "INSUFFICIENT_STOCK"
-    ) {
+    // Business rule: requested quantity exceeds stock
+    if (error instanceof Error && error.message === "INSUFFICIENT_STOCK") {
       return NextResponse.json(
         {
           error: "Not enough stock available",
         },
         {
           status: 409,
-        }
+        },
       );
     }
-
-    if (
-      error instanceof Error &&
-      error.message === "INVENTORY_NOT_FOUND"
-    ) {
+    // Inventory item does not exist
+    if (error instanceof Error && error.message === "INVENTORY_NOT_FOUND") {
       return NextResponse.json(
         {
           error: "Inventory not found",
         },
         {
           status: 404,
-        }
+        },
       );
     }
 
@@ -176,13 +170,13 @@ export async function POST(req: NextRequest) {
       },
       {
         status: 500,
-      }
+      },
     );
   } finally {
-    console.log(
-      "RELEASING LOCK:",
-      inventoryId
-    );
+    // Always release lock to avoid deadlocks,
+    // even if the request fails.
+
+    console.log("RELEASING LOCK:", inventoryId);
 
     if (lockKey) {
       await releaseLock(lockKey);

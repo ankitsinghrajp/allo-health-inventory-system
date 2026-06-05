@@ -5,27 +5,29 @@ import { cleanupExpiredReservations } from "@/src/lib/cleanupExpiredReservations
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    // Ensure expired reservations are cleaned up before returning data
     await cleanupExpiredReservations();
 
     const { id } = await params;
 
-    const reservation =
-      await prisma.reservation.findUnique({
-        where: {
-          id,
-        },
-        include: {
-          inventory: {
-            include: {
-              product: true,
-              warehouse: true,
-            },
+    // Fetch reservation along with inventory, product,
+    // and warehouse information for detailed response
+    const reservation = await prisma.reservation.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        inventory: {
+          include: {
+            product: true,
+            warehouse: true,
           },
         },
-      });
+      },
+    });
 
     if (!reservation) {
       return NextResponse.json(
@@ -34,10 +36,11 @@ export async function GET(
         },
         {
           status: 404,
-        }
+        },
       );
     }
 
+    // Return reservation details including related inventory metadata
     return NextResponse.json({
       success: true,
       reservation,
@@ -51,7 +54,7 @@ export async function GET(
       },
       {
         status: 500,
-      }
+      },
     );
   }
 }

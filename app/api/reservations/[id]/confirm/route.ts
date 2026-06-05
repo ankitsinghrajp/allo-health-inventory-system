@@ -5,19 +5,19 @@ import { cleanupExpiredReservations } from "@/src/lib/cleanupExpiredReservations
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    // Release stock from any expired reservations before confirmation
     await cleanupExpiredReservations();
 
     const { id } = await params;
-
-    const reservation =
-      await prisma.reservation.findUnique({
-        where: {
-          id,
-        },
-      });
+    // Fetch reservation details
+    const reservation = await prisma.reservation.findUnique({
+      where: {
+        id,
+      },
+    });
 
     if (!reservation) {
       return NextResponse.json(
@@ -26,83 +26,77 @@ export async function POST(
         },
         {
           status: 404,
-        }
+        },
       );
     }
 
+    // Only pending reservations can be confirmed
     if (reservation.status !== "PENDING") {
       return NextResponse.json(
         {
-          error:
-            "Reservation is not pending",
+          error: "Reservation is not pending",
         },
         {
           status: 400,
-        }
+        },
       );
     }
 
-    if (
-      new Date() >
-      reservation.expiresAt
-    ) {
+    // Prevent confirmation of expired reservations
+    if (new Date() > reservation.expiresAt) {
       return NextResponse.json(
         {
-          error:
-            "Reservation expired",
+          error: "Reservation expired",
         },
         {
           status: 410,
-        }
+        },
       );
     }
 
-    await prisma.$transaction(
-      async (tx) => {
-        await tx.inventory.update({
-          where: {
-            id: reservation.inventoryId,
+    // Atomically convert reserved stock into sold/confirmed stock
+    await prisma.$transaction(async (tx) => {
+      await tx.inventory.update({
+        where: {
+          id: reservation.inventoryId,
+        },
+        data: {
+          // Remove confirmed quantity from total inventory
+          totalStock: {
+            decrement: reservation.quantity,
           },
-          data: {
-            totalStock: {
-              decrement:
-                reservation.quantity,
-            },
+          // Release the reserved quantity
+          reservedStock: {
+            decrement: reservation.quantity,
+          },
+        },
+      });
 
-            reservedStock: {
-              decrement:
-                reservation.quantity,
-            },
-          },
-        });
-
-        await tx.reservation.update({
-          where: {
-            id,
-          },
-          data: {
-            status: "CONFIRMED",
-          },
-        });
-      }
-    );
+      // Mark reservation as confirmed
+      await tx.reservation.update({
+        where: {
+          id,
+        },
+        data: {
+          status: "CONFIRMED",
+        },
+      });
+    });
 
     return NextResponse.json({
       success: true,
-      message:
-        "Reservation confirmed successfully",
+      message: "Reservation confirmed successfully",
     });
   } catch (error) {
     console.error(error);
 
     return NextResponse.json(
       {
-        error:
-          "Internal server error",
+        error: "Internal server error",
       },
       {
         status: 500,
-      }
+      },
     );
   }
 }

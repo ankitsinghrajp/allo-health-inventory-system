@@ -5,19 +5,20 @@ import { cleanupExpiredReservations } from "@/src/lib/cleanupExpiredReservations
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    // Release stock held by expired reservations before processing
     await cleanupExpiredReservations();
 
     const { id } = await params;
 
-    const reservation =
-      await prisma.reservation.findUnique({
-        where: {
-          id,
-        },
-      });
+    // Fetch reservation details
+    const reservation = await prisma.reservation.findUnique({
+      where: {
+        id,
+      },
+    });
 
     if (!reservation) {
       return NextResponse.json(
@@ -26,63 +27,61 @@ export async function POST(
         },
         {
           status: 404,
-        }
+        },
       );
     }
 
+    // Only pending reservations can be released
     if (reservation.status !== "PENDING") {
       return NextResponse.json(
         {
-          error:
-            "Reservation is not pending",
+          error: "Reservation is not pending",
         },
         {
           status: 400,
-        }
+        },
       );
     }
 
-    await prisma.$transaction(
-      async (tx) => {
-        await tx.inventory.update({
-          where: {
-            id: reservation.inventoryId,
+    // Atomically release reserved stock and update reservation status
+    await prisma.$transaction(async (tx) => {
+      await tx.inventory.update({
+        where: {
+          id: reservation.inventoryId,
+        },
+        data: {
+          // Return reserved quantity back to available inventory
+          reservedStock: {
+            decrement: reservation.quantity,
           },
-          data: {
-            reservedStock: {
-              decrement:
-                reservation.quantity,
-            },
-          },
-        });
+        },
+      });
 
-        await tx.reservation.update({
-          where: {
-            id,
-          },
-          data: {
-            status: "RELEASED",
-          },
-        });
-      }
-    );
+      // Mark reservation as released/cancelled
+      await tx.reservation.update({
+        where: {
+          id,
+        },
+        data: {
+          status: "RELEASED",
+        },
+      });
+    });
 
     return NextResponse.json({
       success: true,
-      message:
-        "Reservation released successfully",
+      message: "Reservation released successfully",
     });
   } catch (error) {
     console.error(error);
 
     return NextResponse.json(
       {
-        error:
-          "Internal server error",
+        error: "Internal server error",
       },
       {
         status: 500,
-      }
+      },
     );
   }
 }
